@@ -481,7 +481,7 @@ export default function NavTemplate({ data }) {
         )}
 
         <footer>
-          <p>{data.name} · Built with Portify</p>
+          <p>{data.name} · Built with Luminary</p>
         </footer>
       </body>
     </html>

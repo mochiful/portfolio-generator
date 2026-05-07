@@ -318,7 +318,7 @@ export default function ScrollingTemplate({ data }) {
         </main>
 
         <footer>
-          {data.name} · Built with Portify
+          {data.name} · Built with Luminary
         </footer>
       </body>
     </html>

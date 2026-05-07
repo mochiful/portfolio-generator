@@ -1,4 +1,4 @@
-# Portfolio Generator
+# Luminary
 
 A static Vite + React app that turns a local resume PDF and optional headshot into a downloadable, self-contained portfolio website.
 
@@ -122,4 +122,3 @@ Make sure `dist/` includes `pdf.worker.min.mjs` after building.
 ## Privacy
 
 Resume PDFs and photos never leave the browser. The app does not upload files to a server.
-

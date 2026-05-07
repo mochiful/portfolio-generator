@@ -477,7 +477,7 @@ export default function CardTemplate({ data }) {
 
         <footer>
           <span>{data.name}</span>
-          <span>Built with Portify</span>
+          <span>Built with Luminary</span>
         </footer>
       </body>
     </html>

@@ -37,7 +37,7 @@ export default function App() {
       <header className="app-header">
         <div className="app-logo">
           <div className="app-logo-dot" />
-          Portify
+          Luminary
         </div>
         <nav className="steps-nav" aria-label="Progress">
           {STEPS.map((s, i) => (
