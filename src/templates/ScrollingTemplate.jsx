@@ -237,6 +237,8 @@ footer {
 `
 
 export default function ScrollingTemplate({ data }) {
+  const customSections = getCustomSections(data)
+
   return (
     <html lang="en">
       <head>
@@ -315,6 +317,25 @@ export default function ScrollingTemplate({ data }) {
               ))}
             </section>
           )}
+
+          {customSections.map(section => (
+            <section key={section.id} className="section">
+              <div className="section-label">{section.title}</div>
+              {section.entries.map(entry => (
+                <div key={entry.id} className="entry">
+                  <div className="entry-meta">
+                    <div className="entry-dates">{entry.dates}</div>
+                    <div className="entry-company">{entry.name}</div>
+                    {entry.location && <div className="entry-dates">{entry.location}</div>}
+                  </div>
+                  <div>
+                    <div className="entry-role">{entry.title}</div>
+                    {entry.description && <p className="entry-desc" style={{ whiteSpace: 'pre-line' }}>{entry.description}</p>}
+                  </div>
+                </div>
+              ))}
+            </section>
+          ))}
         </main>
 
         <footer>
@@ -323,4 +344,36 @@ export default function ScrollingTemplate({ data }) {
       </body>
     </html>
   )
+}
+
+function getCustomSections(data) {
+  return (data.customSections || [])
+    .map(normalizeCustomSection)
+    .filter(section => section.title && section.entries.length > 0)
+}
+
+function normalizeCustomSection(section, sectionIdx) {
+  return {
+    id: section.id || `custom-${sectionIdx}`,
+    title: section.title?.trim() || '',
+    entries: getCustomEntries(section),
+  }
+}
+
+function getCustomEntries(section) {
+  if (Array.isArray(section.entries)) {
+    return section.entries
+      .map((entry, i) => ({
+        id: entry.id || `${section.id || 'custom'}-entry-${i}`,
+        name: entry.name?.trim() || '',
+        title: entry.title?.trim() || '',
+        location: entry.location?.trim() || '',
+        dates: entry.dates?.trim() || '',
+        description: entry.description?.trim() || '',
+      }))
+      .filter(entry => entry.name || entry.title || entry.location || entry.dates || entry.description)
+  }
+
+  const content = section.content?.trim()
+  return content ? [{ id: `${section.id || 'custom'}-entry-0`, name: '', title: '', location: '', dates: '', description: content }] : []
 }

@@ -377,6 +377,7 @@ export default function NavTemplate({ data }) {
   const hasSkills = data.skills?.length > 0
   const hasExp = data.experience?.length > 0
   const hasEdu = data.education?.length > 0
+  const customSections = getCustomSections(data)
 
   return (
     <html lang="en">
@@ -394,6 +395,9 @@ export default function NavTemplate({ data }) {
             {hasSkills && <li><a href="#skills">Skills</a></li>}
             {hasExp && <li><a href="#experience">Experience</a></li>}
             {hasEdu && <li><a href="#education">Education</a></li>}
+            {customSections.map(section => (
+              <li key={section.id}><a href={`#${section.anchor}`}>{section.title}</a></li>
+            ))}
           </ul>
         </nav>
 
@@ -480,10 +484,76 @@ export default function NavTemplate({ data }) {
           </section>
         )}
 
+        {customSections.map(section => (
+          <section key={section.id} id={section.anchor} className="section">
+            <div className="section-inner">
+              <h2 className="section-heading">{section.title}</h2>
+              <div className="timeline">
+                {section.entries.map(entry => (
+                  <div key={entry.id} className="timeline-item">
+                    <div className="tl-meta">
+                      <div className="tl-dates">{entry.dates}</div>
+                      <div className="tl-company">{entry.name}</div>
+                      {entry.location && <div className="tl-dates">{entry.location}</div>}
+                    </div>
+                    <div>
+                      <div className="tl-role">{entry.title}</div>
+                      {entry.description && <p className="tl-desc" style={{ whiteSpace: 'pre-line' }}>{entry.description}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        ))}
+
         <footer>
           <p>{data.name} · Built with Luminary</p>
         </footer>
       </body>
     </html>
   )
+}
+
+function getCustomSections(data) {
+  return (data.customSections || [])
+    .map(normalizeCustomSection)
+    .filter(section => section.title && section.entries.length > 0)
+    .map((section, i) => ({
+      ...section,
+      anchor: `custom-${slugify(section.title)}-${i}`,
+    }))
+}
+
+function normalizeCustomSection(section, sectionIdx) {
+  return {
+    id: section.id || `custom-${sectionIdx}`,
+    title: section.title?.trim() || '',
+    entries: getCustomEntries(section),
+  }
+}
+
+function getCustomEntries(section) {
+  if (Array.isArray(section.entries)) {
+    return section.entries
+      .map((entry, i) => ({
+        id: entry.id || `${section.id || 'custom'}-entry-${i}`,
+        name: entry.name?.trim() || '',
+        title: entry.title?.trim() || '',
+        location: entry.location?.trim() || '',
+        dates: entry.dates?.trim() || '',
+        description: entry.description?.trim() || '',
+      }))
+      .filter(entry => entry.name || entry.title || entry.location || entry.dates || entry.description)
+  }
+
+  const content = section.content?.trim()
+  return content ? [{ id: `${section.id || 'custom'}-entry-0`, name: '', title: '', location: '', dates: '', description: content }] : []
+}
+
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'section'
 }

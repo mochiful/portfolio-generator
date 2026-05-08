@@ -91,7 +91,7 @@ export default function Uploader({ onDataParsed }) {
           Resume → Portfolio
         </div>
         <h1 className="page-title">
-          Turn your résumé<br />into a <em>portfolio</em>
+          Turn your resume<br />into a <em>portfolio</em>
         </h1>
         <p className="page-subtitle">
           Upload your PDF and an optional photo. Everything runs in your browser — no uploads, no servers, no accounts.
@@ -248,9 +248,9 @@ export default function Uploader({ onDataParsed }) {
         style={{ fontSize: 15, padding: '14px 36px' }}
       >
         {status === 'loading' ? (
-          <><div className="spinner" style={{ width: 16, height: 16 }} /> Parsing résumé…</>
+          <><div className="spinner" style={{ width: 16, height: 16 }} /> Parsing resume…</>
         ) : (
-          'Parse Résumé →'
+          'Parse Resume →'
         )}
       </button>
 

@@ -17,6 +17,18 @@ export default function App() {
 
   const stepIndex = STEPS.findIndex(s => s.id === step)
 
+  function canVisitStep(stepId) {
+    if (stepId === 'upload') return true
+    if (stepId === 'edit') return Boolean(resumeData)
+    if (stepId === 'layout') return Boolean(resumeData)
+    if (stepId === 'done') return Boolean(resumeData && selectedLayout)
+    return false
+  }
+
+  function goToStep(stepId) {
+    if (canVisitStep(stepId)) setStep(stepId)
+  }
+
   function handleDataParsed(data) {
     setResumeData(data)
     setStep('edit')
@@ -35,19 +47,24 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <div className="app-logo">
+        <button className="app-logo" onClick={() => goToStep('upload')} aria-label="Go to upload">
           <div className="app-logo-dot" />
           Luminary
-        </div>
+        </button>
         <nav className="steps-nav" aria-label="Progress">
           {STEPS.map((s, i) => (
             <div key={s.id} style={{ display: 'flex', alignItems: 'center' }}>
-              <div className={`step-item ${i === stepIndex ? 'active' : i < stepIndex ? 'done' : ''}`}>
+              <button
+                className={`step-item ${i === stepIndex ? 'active' : i < stepIndex ? 'done' : ''}`}
+                onClick={() => goToStep(s.id)}
+                disabled={!canVisitStep(s.id)}
+                aria-current={i === stepIndex ? 'step' : undefined}
+              >
                 <div className="step-number">
                   {i < stepIndex ? '✓' : i + 1}
                 </div>
                 {s.label}
-              </div>
+              </button>
               {i < STEPS.length - 1 && <div className="step-sep" />}
             </div>
           ))}

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 
 export default function DataEditor({ initialData, onBack, onNext }) {
   const [data, setData] = useState(() => ({
@@ -6,6 +6,7 @@ export default function DataEditor({ initialData, onBack, onNext }) {
     skills: initialData.skills || [],
     experience: initialData.experience || [],
     education: initialData.education || [],
+    customSections: (initialData.customSections || []).map(normalizeCustomSection),
   }))
   const [skillInput, setSkillInput] = useState('')
   const [error, setError] = useState(null)
@@ -58,12 +59,71 @@ export default function DataEditor({ initialData, onBack, onNext }) {
     set('education', data.education.filter((_, i) => i !== idx))
   }
 
+  function updateCustomSection(idx, field, value) {
+    const updated = data.customSections.map((section, i) => i === idx ? { ...section, [field]: value } : section)
+    set('customSections', updated)
+  }
+
+  function updateCustomEntry(sectionIdx, entryIdx, field, value) {
+    const updated = data.customSections.map((section, i) => {
+      if (i !== sectionIdx) return section
+      return {
+        ...section,
+        entries: section.entries.map((entry, j) => j === entryIdx ? { ...entry, [field]: value } : entry),
+      }
+    })
+    set('customSections', updated)
+  }
+
+  function addCustomSection() {
+    set('customSections', [
+      ...data.customSections,
+      { id: createId(), title: '', entries: [createCustomEntry()] },
+    ])
+  }
+
+  function removeCustomSection(idx) {
+    set('customSections', data.customSections.filter((_, i) => i !== idx))
+  }
+
+  function addCustomEntry(sectionIdx) {
+    const updated = data.customSections.map((section, i) => i === sectionIdx
+      ? { ...section, entries: [...section.entries, createCustomEntry()] }
+      : section)
+    set('customSections', updated)
+  }
+
+  function removeCustomEntry(sectionIdx, entryIdx) {
+    const updated = data.customSections.map((section, i) => i === sectionIdx
+      ? { ...section, entries: section.entries.filter((_, j) => j !== entryIdx) }
+      : section)
+    set('customSections', updated)
+  }
+
   function handleNext() {
     if (!data.name.trim()) {
       setError('Please enter a name before continuing.')
       return
     }
-    onNext(data)
+    onNext({
+      ...data,
+      customSections: data.customSections
+        .map(section => ({
+          ...section,
+          title: section.title.trim(),
+          entries: section.entries
+            .map(entry => ({
+              ...entry,
+              name: entry.name.trim(),
+              title: entry.title.trim(),
+              location: entry.location.trim(),
+              dates: entry.dates.trim(),
+              description: entry.description.trim(),
+            }))
+            .filter(entry => entry.name || entry.title || entry.location || entry.dates || entry.description),
+        }))
+        .filter(section => section.title && section.entries.length > 0),
+    })
   }
 
   return (
@@ -187,6 +247,46 @@ export default function DataEditor({ initialData, onBack, onNext }) {
           ))}
         </Section>
 
+        {/* Custom Sections */}
+        <Section
+          title="Additional Sections"
+          action={<button className="btn btn-ghost" style={{ padding: '6px 14px', fontSize: 12 }} onClick={addCustomSection}>+ Add</button>}
+        >
+          {data.customSections.length === 0 && (
+            <p style={{ color: 'var(--text-3)', fontSize: 13, fontStyle: 'italic' }}>No additional sections. Click + Add for leadership, projects, certifications, activities, or anything else.</p>
+          )}
+          {data.customSections.map((section, i) => (
+            <div key={section.id} className="editor-entry-card">
+              <div style={{ marginBottom: 10 }}>
+                <Field
+                  label="Section Title"
+                  value={section.title}
+                  onChange={v => updateCustomSection(i, 'title', v)}
+                  placeholder="Leadership and Activities"
+                />
+              </div>
+              {(section.entries || []).map((entry, entryIdx) => (
+                <div key={entry.id} className="editor-entry-card" style={{ background: 'var(--bg-2)', marginBottom: 10 }}>
+                  <div className="editor-entry-grid">
+                    <Field label="Name" value={entry.name} onChange={v => updateCustomEntry(i, entryIdx, 'name', v)} placeholder="Finance Club" />
+                    <Field label="Title" value={entry.title} onChange={v => updateCustomEntry(i, entryIdx, 'title', v)} placeholder="President" />
+                    <Field label="Location" value={entry.location} onChange={v => updateCustomEntry(i, entryIdx, 'location', v)} placeholder="New York, NY" />
+                    <Field label="Dates" value={entry.dates} onChange={v => updateCustomEntry(i, entryIdx, 'dates', v)} placeholder="Sep 2024 - Present" />
+                  </div>
+                  <Field label="Description" value={entry.description} onChange={v => updateCustomEntry(i, entryIdx, 'description', v)} multiline placeholder="What did you do or accomplish?" />
+                  <div style={{ marginTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="btn btn-danger" onClick={() => removeCustomEntry(i, entryIdx)}>Remove Entry</button>
+                  </div>
+                </div>
+              ))}
+              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                <button className="btn btn-ghost" style={{ padding: '6px 14px', fontSize: 12 }} onClick={() => addCustomEntry(i)}>+ Add Entry</button>
+                <button className="btn btn-danger" onClick={() => removeCustomSection(i)}>Remove</button>
+              </div>
+            </div>
+          ))}
+        </Section>
+
         {error && (
           <div className="msg-error" style={{ marginBottom: 20 }}>
             <span>⚠</span> {error}
@@ -204,6 +304,32 @@ export default function DataEditor({ initialData, onBack, onNext }) {
 
 function createId() {
   return globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function createCustomEntry(entry = {}) {
+  return {
+    id: entry.id || createId(),
+    name: entry.name || '',
+    title: entry.title || '',
+    location: entry.location || '',
+    dates: entry.dates || '',
+    description: entry.description || '',
+  }
+}
+
+function normalizeCustomSection(section) {
+  const legacyContent = section.content?.trim()
+  const entries = Array.isArray(section.entries) && section.entries.length > 0
+    ? section.entries.map(createCustomEntry)
+    : legacyContent
+      ? [createCustomEntry({ description: legacyContent })]
+      : [createCustomEntry()]
+
+  return {
+    id: section.id || createId(),
+    title: section.title || '',
+    entries,
+  }
 }
 
 function Section({ title, children, action }) {

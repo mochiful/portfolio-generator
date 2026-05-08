@@ -24,23 +24,36 @@ const SECTION_NAMES = [
   'PROFILE',
   'OBJECTIVE',
   'PROJECTS',
+  'PROJECT EXPERIENCE',
+  'SELECTED PROJECTS',
   'LEADERSHIP & ACTIVITIES',
   'LEADERSHIP AND ACTIVITIES',
+  'LEADERSHIP',
+  'STUDENT LEADERSHIP',
   'LEADERSHIP/ EXTRACURRICULAR ACTIVITIES',
   'LEADERSHIP / EXTRACURRICULAR ACTIVITIES',
   'EXTRACURRICULAR ACTIVITIES',
+  'VOLUNTEER EXPERIENCE',
+  'VOLUNTEERING',
   'ACTIVITIES',
   'FINANCE SIMULATION EXPERIENCE',
   'CERTIFICATIONS',
+  'LICENSES & CERTIFICATIONS',
+  'LICENSES AND CERTIFICATIONS',
   'LANGUAGES',
   'CONTACT',
   'CONTACT INFORMATION',
   'AWARDS',
+  'HONORS',
+  'HONORS & AWARDS',
+  'HONORS AND AWARDS',
   'PUBLICATIONS',
+  'RESEARCH',
+  'INTERESTS',
 ]
 
-const SECTION_RE = new RegExp(`^(${SECTION_NAMES.join('|')})\\s*:?$`, 'i')
-const SECTION_GLOBAL_RE = new RegExp(`^\\s*(${SECTION_NAMES.join('|')})\\s*:?\\s*$`, 'gim')
+const KNOWN_SECTION_RE_SOURCE = SECTION_NAMES.map(escapeRegExp).join('|')
+const SECTION_RE = new RegExp(`^(${KNOWN_SECTION_RE_SOURCE})\\s*:?$`, 'i')
 
 const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/
 const PHONE_RE = /(\+?1?\s?)?(\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})/
@@ -57,6 +70,13 @@ const YEAR_ONLY_RE = /\b(19|20)\d{2}\b/
 const BULLET_RE = /^[•●▪▸*-]\s*/
 const BULLET_ONLY_RE = /^[•●▪▸*-]$/
 const CONTACT_SEPARATOR_RE = /\s*[|•▪]\s*/
+
+const STANDARD_SECTION_RE = /^(?:EXPERIENCES?|PROFESSIONAL EXPERIENCES?|WORK EXPERIENCE|PROFESSIONAL EXPERIENCE|EMPLOYMENT|WORK HISTORY|EDUCATION|ACADEMIC BACKGROUND|SKILLS? & INTERESTS?|SKILLS? AND INTERESTS?|SKILLS|TECHNICAL SKILLS|CORE COMPETENCIES|SUMMARY|PROFESSIONAL SUMMARY|PROFILE|OBJECTIVE|CONTACT|CONTACT INFORMATION)$/i
+const WORK_SECTION_RE = /^(?:EXPERIENCES?|PROFESSIONAL EXPERIENCES?|WORK EXPERIENCE|PROFESSIONAL EXPERIENCE|EMPLOYMENT|WORK HISTORY)$/i
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 function createId() {
   return globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -174,6 +194,7 @@ function extractStructuredData(text) {
   const skills = extractSkills(sections)
   const experience = extractExperience(sections)
   const education = extractEducation(sections)
+  const customSections = extractCustomSections(sections)
 
   return {
     name,
@@ -188,6 +209,7 @@ function extractStructuredData(text) {
     skills,
     experience,
     education,
+    customSections,
     photo: null,
   }
 }
@@ -272,18 +294,65 @@ function extractLocation(lines, email, phone, name, title) {
 
 function splitIntoSections(text) {
   const sections = {}
-  const matches = [...text.matchAll(SECTION_GLOBAL_RE)]
+  const matches = findSectionHeaders(text)
 
   if (matches.length === 0) return { _full: text }
 
   matches.forEach((match, i) => {
-    const header = match[1].trim().toUpperCase()
-    const start = match.index + match[0].length
+    const header = match.header.toUpperCase()
+    const start = match.end
     const end = matches[i + 1] ? matches[i + 1].index : text.length
-    sections[header] = text.slice(start, end).trim()
+    const content = text.slice(start, end).trim()
+    sections[header] = sections[header] ? `${sections[header]}\n${content}`.trim() : content
   })
 
   return sections
+}
+
+function findSectionHeaders(text) {
+  const matches = []
+  let offset = 0
+
+  for (const rawLine of text.split('\n')) {
+    const lineStart = offset
+    const lineEnd = offset + rawLine.length
+    const header = getSectionHeader(rawLine, matches.length)
+    if (header) {
+      matches.push({
+        header,
+        index: lineStart,
+        end: lineEnd,
+      })
+    }
+    offset = lineEnd + 1
+  }
+
+  return matches
+}
+
+function getSectionHeader(rawLine, headerCount) {
+  const line = rawLine.trim().replace(/:$/, '').trim()
+  if (!line) return null
+  if (SECTION_RE.test(line)) return line
+  if (!looksLikeInferredSectionHeader(line)) return null
+  if (headerCount === 0 && line.split(/\s+/).length <= 3) return null
+  return line
+}
+
+function looksLikeInferredSectionHeader(line) {
+  if (line.length < 4 || line.length > 60) return false
+  if (BULLET_RE.test(line)) return false
+  if (EMAIL_RE.test(line) || PHONE_RE.test(line) || URL_RE.test(line)) return false
+  if (hasDateRange(line) || YEAR_ONLY_RE.test(line)) return false
+  if (!/^[A-Za-z][A-Za-z0-9\s/&,+-]+$/.test(line)) return false
+  if (/[.!?]$/.test(line)) return false
+
+  const letters = line.replace(/[^A-Za-z]/g, '')
+  if (letters.length < 3) return false
+  const words = line.split(/\s+/).filter(Boolean)
+  if (words.length > 7) return false
+
+  return letters === letters.toUpperCase()
 }
 
 function extractSummary(sections) {
@@ -341,7 +410,7 @@ function hasDateRange(text) {
 
 function extractExperience(sections) {
   const keys = Object.keys(sections).filter(k =>
-    /EXPERIENCE|EMPLOYMENT|WORK HISTORY|LEADERSHIP|ACTIVITIES|PROJECTS/.test(k)
+    WORK_SECTION_RE.test(k)
   )
   return keys.flatMap(key => parseExperienceOrEducation(sections[key], 'experience'))
 }
@@ -352,6 +421,210 @@ function extractEducation(sections) {
 
   const text = sections[key]
   return parseExperienceOrEducation(text, 'education')
+}
+
+function extractCustomSections(sections) {
+  return Object.keys(sections)
+    .filter(key => key !== '_full')
+    .filter(key => !STANDARD_SECTION_RE.test(key))
+    .map(key => ({
+      id: createId(),
+      title: formatSectionTitle(key),
+      entries: parseCustomSectionEntries(sections[key]),
+    }))
+    .filter(section => section.title && section.entries.length > 0)
+}
+
+function formatSectionTitle(key) {
+  return key
+    .toLowerCase()
+    .replace(/\b[a-z]/g, char => char.toUpperCase())
+    .replace(/\bAnd\b/g, 'and')
+    .replace(/\bOf\b/g, 'of')
+}
+
+function parseCustomSectionEntries(text) {
+  const lines = normalizeResumeLines(text)
+  if (lines.length === 0) return []
+
+  const datelines = []
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].isBullet) continue
+    const line = lines[i].text
+
+    DATE_RANGE_RE.lastIndex = 0
+    const range = line.match(DATE_RANGE_RE)
+    if (range) {
+      datelines.push({ lineIdx: i, dateStr: range[0] })
+      continue
+    }
+
+    const monthYear = line.match(MONTH_YEAR_RE)
+    if (monthYear) {
+      datelines.push({ lineIdx: i, dateStr: monthYear[0] })
+      continue
+    }
+
+    const year = line.match(YEAR_ONLY_RE)
+    if (year && !datelines.some(d => Math.abs(d.lineIdx - i) < 3)) {
+      datelines.push({ lineIdx: i, dateStr: year[0] })
+    }
+  }
+
+  if (datelines.length === 0) {
+    let headerEnd = 0
+    while (
+      headerEnd < lines.length &&
+      headerEnd < 4 &&
+      !lines[headerEnd].isBullet &&
+      (looksLikeHeaderLine(lines[headerEnd]) || looksLikeLocation(lines[headerEnd].text))
+    ) {
+      headerEnd++
+    }
+
+    const headerCandidates = lines.slice(0, Math.max(1, headerEnd)).map(line => line.text)
+    const descLines = lines.slice(Math.max(1, headerEnd))
+    return [buildCustomSectionEntry(headerCandidates, descLines, '')].filter(entryHasContent)
+  }
+
+  const entries = []
+  for (let di = 0; di < datelines.length; di++) {
+    const { lineIdx, dateStr } = datelines[di]
+    const prevBound = di > 0 ? datelines[di - 1].lineIdx + 1 : 0
+    const nextDateIdx = di + 1 < datelines.length ? datelines[di + 1].lineIdx : lines.length
+    const dateLineRemainder = getDateLineRemainder(lines[lineIdx].text)
+    const headerCandidates = []
+    const headerStart = findCustomHeaderStart(lines, lineIdx, prevBound, dateLineRemainder)
+
+    for (let i = headerStart; i < lineIdx; i++) {
+      headerCandidates.push(lines[i].text)
+    }
+    if (dateLineRemainder) headerCandidates.push(dateLineRemainder)
+
+    let descStart = lineIdx + 1
+    while (headerCandidates.length < 3 && descStart < nextDateIdx && !lines[descStart].isBullet && looksLikeHeaderLine(lines[descStart])) {
+      headerCandidates.push(lines[descStart].text)
+      descStart++
+    }
+
+    const descEnd = di + 1 < datelines.length
+      ? findCustomHeaderStart(lines, nextDateIdx, lineIdx + 1, getDateLineRemainder(lines[nextDateIdx].text))
+      : nextDateIdx
+
+    entries.push(buildCustomSectionEntry(headerCandidates, lines.slice(descStart, descEnd), dateStr))
+  }
+
+  return entries.filter(entryHasContent)
+}
+
+function buildCustomSectionEntry(headerCandidates, descLines, dateStr) {
+  const rawParts = headerCandidates
+    .flatMap(splitCustomHeaderParts)
+    .filter(Boolean)
+  const parts = []
+  let location = ''
+
+  for (const rawPart of rawParts) {
+    const locationSplit = splitTrailingLocation(rawPart)
+    if (locationSplit) {
+      if (locationSplit.name) parts.push(locationSplit.name)
+      if (!location) location = locationSplit.location
+      continue
+    }
+
+    parts.push(rawPart)
+  }
+
+  let cleanedParts = parts.map(cleanHeaderLine).filter(Boolean)
+  if (cleanedParts.length === 1) {
+    const roleSplit = splitTrailingRole(cleanedParts[0])
+    if (roleSplit) cleanedParts = [roleSplit.name, roleSplit.title]
+  }
+
+  return {
+    id: createId(),
+    name: (cleanedParts[0] || '').slice(0, 150),
+    title: (cleanedParts[1] || '').slice(0, 150),
+    location: location.slice(0, 100),
+    dates: dateStr,
+    description: buildDescription(descLines).slice(0, 1200),
+  }
+}
+
+function findCustomHeaderStart(lines, dateLineIdx, lowerBound, dateLineRemainder) {
+  let start = dateLineIdx
+  const maxHeaderLines = dateLineRemainder ? 2 : 4
+  let count = 0
+
+  for (let i = dateLineIdx - 1; i >= lowerBound && count < maxHeaderLines; i--) {
+    if (lines[i].isBullet) break
+    if (!looksLikeHeaderLine(lines[i]) && !looksLikeLocation(lines[i].text)) break
+    start = i
+    count++
+  }
+
+  return start
+}
+
+function splitCustomHeaderParts(line) {
+  return line
+    .split(/\s{2,}|\s+[|]\s+|\s+-\s+/)
+    .map(part => part.trim().replace(/\s*,\s*$/g, ''))
+    .filter(Boolean)
+}
+
+function entryHasContent(entry) {
+  return entry.name || entry.title || entry.location || entry.dates || entry.description
+}
+
+function looksLikeLocation(text) {
+  const split = splitTrailingLocation(text)
+  return Boolean(split && !split.name)
+}
+
+function splitTrailingLocation(text) {
+  const trimmed = text.trim().replace(/\s*,\s*$/, '')
+  const stateMatch = trimmed.match(/,\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b(?:,\s*\d{5}(?:-\d{4})?)?$/)
+  if (!stateMatch) return null
+
+  const beforeComma = trimmed.slice(0, stateMatch.index).trim()
+  if (!beforeComma) return null
+
+  const words = beforeComma.split(/\s+/)
+  const commonMultiWordCities = new Set([
+    'New York',
+    'Los Angeles',
+    'San Francisco',
+    'Salt Lake',
+    'San Diego',
+    'San Jose',
+    'Las Vegas',
+    'Jersey City',
+    'Staten Island',
+  ])
+
+  for (let wordCount = Math.min(3, words.length); wordCount >= 1; wordCount--) {
+    const city = words.slice(-wordCount).join(' ')
+    const canUseCity = commonMultiWordCities.has(city) || wordCount === 1 || wordCount === words.length
+    if (!canUseCity) continue
+
+    const name = words.slice(0, -wordCount).join(' ').trim()
+    return {
+      name,
+      location: `${city}${trimmed.slice(stateMatch.index)}`.trim(),
+    }
+  }
+
+  return null
+}
+
+function splitTrailingRole(text) {
+  const roleMatch = text.match(/\b(Assistant Vice President(?:\s+of\s+[A-Za-z &]+)?|Vice President(?:\s+of\s+[A-Za-z &]+)?|Business Analyst|Internal Audit Intern|Summer Intern|President|Secretary|Treasurer|Analyst|Intern|Mentee|Fellow|Member|Coordinator|Specialist|Director|Manager|Lead|Chair|Captain|Volunteer)$/i)
+  if (!roleMatch || roleMatch.index === 0) return null
+
+  const name = text.slice(0, roleMatch.index).trim().replace(/[,|-]+$/g, '').trim()
+  const title = roleMatch[1].trim()
+  return name && title ? { name, title } : null
 }
 
 function parseExperienceOrEducation(text, type) {
