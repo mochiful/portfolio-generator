@@ -67,8 +67,8 @@ const DATE_RANGE_RE = new RegExp(`(${DATE_TOKEN_RE})\\s*(?:-|–|—|to)\\s*(${D
 const EXPECTED_GRAD_RE = new RegExp(`\\b(?:Expected\\s+)?Graduation\\s+(?:Date\\s+)?(?:${MONTH_RE})\\.?\\s+\\d{4}\\b`, 'i')
 const MONTH_YEAR_RE = new RegExp(`\\b(?:${MONTH_RE})\\.?\\s+\\d{4}\\b`, 'i')
 const YEAR_ONLY_RE = /\b(19|20)\d{2}\b/
-const BULLET_RE = /^[•●▪▸*-]\s*/
-const BULLET_ONLY_RE = /^[•●▪▸*-]$/
+const BULLET_RE = /^[?•●▪▸*\-]\s*/
+const BULLET_ONLY_RE = /^[?•●▪▸*\-]$/
 const CONTACT_SEPARATOR_RE = /\s*[|•▪]\s*/
 
 const STANDARD_SECTION_RE = /^(?:EXPERIENCES?|PROFESSIONAL EXPERIENCES?|WORK EXPERIENCE|PROFESSIONAL EXPERIENCE|EMPLOYMENT|WORK HISTORY|EDUCATION|ACADEMIC BACKGROUND|SKILLS? & INTERESTS?|SKILLS? AND INTERESTS?|SKILLS|TECHNICAL SKILLS|CORE COMPETENCIES|SUMMARY|PROFESSIONAL SUMMARY|PROFILE|OBJECTIVE|CONTACT|CONTACT INFORMATION)$/i
@@ -159,7 +159,10 @@ function extractPageText(items) {
 function normalizeText(text) {
   return text
     .replace(/\r/g, '\n')
+    .replace(/[–—]/g, ' - ')
+    .replace(/[‑‐]/g, '-')
     .replace(/[ \t]+\n/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
@@ -371,15 +374,47 @@ function extractSummary(sections) {
 function extractSkills(sections) {
   const key = Object.keys(sections).find(k => /SKILL|COMPETENC|TECHNICAL/.test(k))
   if (!key) return []
-  const raw = normalizeResumeLines(sections[key])
-    .filter(line => !/^(?:Interests?|Hobbies)\s*:/i.test(line.text))
-    .map(line => line.text.replace(/^(?:Technical Skills?|Language|Languages|Tools|Skills?)\s*:\s*/i, ''))
-    .join('\n')
+  const lines = normalizeResumeLines(sections[key])
+  const items = lines.some(line => line.isBullet)
+    ? extractBulletSkillItems(lines)
+    : splitSkillText(lines.map(line => line.text).join('\n'))
 
-  return splitSkillText(raw)
+  return items
     .map(s => s.trim().replace(/^[-–—·\s]+/, '').trim())
-    .filter(s => s.length > 1 && s.length < 50 && !hasDateRange(s) && !/^(?:Interests?|Hobbies)\s*:/i.test(s))
+    .filter(s => s.length > 1 && s.length < 240 && !hasDateRange(s) && !/^(?:Interests?|Hobbies)\s*:/i.test(s))
     .filter((s, i, arr) => arr.findIndex(v => v.toLowerCase() === s.toLowerCase()) === i)
+}
+
+function extractBulletSkillItems(lines) {
+  const bulletItems = []
+  const looseLines = []
+  let current = ''
+
+  for (const line of lines) {
+    const text = line.text.trim()
+    if (!text) continue
+
+    if (line.isBullet) {
+      if (current) bulletItems.push(current)
+      current = text
+    } else if (current) {
+      current = `${current} ${text}`.trim()
+    } else {
+      looseLines.push(text)
+    }
+  }
+
+  if (current) bulletItems.push(current)
+
+  const output = []
+  for (const item of bulletItems) {
+    const categoryMatch = item.match(/^(Technical Skills?|Language|Languages|Tools|Skills?)\s*:\s*(.+)$/i)
+    if (categoryMatch) output.push(...splitSkillText(categoryMatch[2]))
+    else output.push(item)
+  }
+
+  if (looseLines.length > 0) output.push(...splitSkillText(looseLines.join('\n')))
+  return output
 }
 
 function splitSkillText(text) {
@@ -536,9 +571,20 @@ function buildCustomSectionEntry(headerCandidates, descLines, dateStr) {
   }
 
   let cleanedParts = parts.map(cleanHeaderLine).filter(Boolean)
+  if (!location) {
+    cleanedParts = cleanedParts.flatMap(part => {
+      const locationSplit = splitTrailingLocation(part)
+      if (!locationSplit) return [part]
+      if (!location) location = locationSplit.location
+      return locationSplit.name ? [locationSplit.name] : []
+    })
+  }
   if (cleanedParts.length === 1) {
     const roleSplit = splitTrailingRole(cleanedParts[0])
     if (roleSplit) cleanedParts = [roleSplit.name, roleSplit.title]
+  }
+  if (cleanedParts.length >= 2 && looksLikeRoleTitle(cleanedParts[0]) && !looksLikeRoleTitle(cleanedParts[1])) {
+    cleanedParts = [cleanedParts[1], cleanedParts[0], ...cleanedParts.slice(2)]
   }
 
   return {
@@ -568,7 +614,7 @@ function findCustomHeaderStart(lines, dateLineIdx, lowerBound, dateLineRemainder
 
 function splitCustomHeaderParts(line) {
   return line
-    .split(/\s{2,}|\s+[|]\s+|\s+-\s+/)
+    .split(/\s{2,}|\s+[|]\s+|\s+[-–—?]\s+/)
     .map(part => part.trim().replace(/\s*,\s*$/g, ''))
     .filter(Boolean)
 }
@@ -584,7 +630,7 @@ function looksLikeLocation(text) {
 
 function splitTrailingLocation(text) {
   const trimmed = text.trim().replace(/\s*,\s*$/, '')
-  const stateMatch = trimmed.match(/,\s*(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b(?:,\s*\d{5}(?:-\d{4})?)?$/)
+  const stateMatch = trimmed.match(/,?\s+(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC|AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)\b(?:,\s*\d{5}(?:-\d{4})?)?$/)
   if (!stateMatch) return null
 
   const beforeComma = trimmed.slice(0, stateMatch.index).trim()
@@ -601,6 +647,9 @@ function splitTrailingLocation(text) {
     'Las Vegas',
     'Jersey City',
     'Staten Island',
+    'Markham',
+    'Waterloo',
+    'Charlotte',
   ])
 
   for (let wordCount = Math.min(3, words.length); wordCount >= 1; wordCount--) {
@@ -611,7 +660,7 @@ function splitTrailingLocation(text) {
     const name = words.slice(0, -wordCount).join(' ').trim()
     return {
       name,
-      location: `${city}${trimmed.slice(stateMatch.index)}`.trim(),
+      location: `${city}, ${stateMatch[1]}`.trim(),
     }
   }
 
@@ -619,12 +668,16 @@ function splitTrailingLocation(text) {
 }
 
 function splitTrailingRole(text) {
-  const roleMatch = text.match(/\b(Assistant Vice President(?:\s+of\s+[A-Za-z &]+)?|Vice President(?:\s+of\s+[A-Za-z &]+)?|Business Analyst|Internal Audit Intern|Summer Intern|President|Secretary|Treasurer|Analyst|Intern|Mentee|Fellow|Member|Coordinator|Specialist|Director|Manager|Lead|Chair|Captain|Volunteer)$/i)
+  const roleMatch = text.match(/\b(Assistant Vice President(?:\s+of\s+[A-Za-z &]+)?|Vice President(?:\s+of\s+[A-Za-z &]+)?|Business Analyst|Internal Audit Intern|Summer Intern|Food Drive Promoter|Carnival Operator|President|Secretary|Treasurer|Analyst|Intern|Mentee|Fellow|Member|Coordinator|Specialist|Director|Manager|Lead|Chair|Captain|Volunteer|Promoter|Operator)$/i)
   if (!roleMatch || roleMatch.index === 0) return null
 
-  const name = text.slice(0, roleMatch.index).trim().replace(/[,|-]+$/g, '').trim()
+  const name = text.slice(0, roleMatch.index).trim().replace(/[,|?|-]+$/g, '').trim()
   const title = roleMatch[1].trim()
   return name && title ? { name, title } : null
+}
+
+function looksLikeRoleTitle(text) {
+  return ROLE_RE.test(text) || Boolean(splitTrailingRole(text))
 }
 
 function parseExperienceOrEducation(text, type) {
@@ -638,15 +691,15 @@ function parseExperienceOrEducation(text, type) {
     const grad = type === 'education' ? line.match(EXPECTED_GRAD_RE) : null
     if (grad) { datelines.push({ lineIdx: i, dateStr: grad[0] }); continue }
 
+    DATE_RANGE_RE.lastIndex = 0
+    const m = line.match(DATE_RANGE_RE)
+    if (m) { datelines.push({ lineIdx: i, dateStr: m[0] }); continue }
+
     const educationDate = type === 'education' ? line.match(MONTH_YEAR_RE) : null
     if (educationDate && looksLikeEducationDateLine(lines, i)) {
       datelines.push({ lineIdx: i, dateStr: educationDate[0] })
       continue
     }
-
-    DATE_RANGE_RE.lastIndex = 0
-    const m = line.match(DATE_RANGE_RE)
-    if (m) { datelines.push({ lineIdx: i, dateStr: m[0] }); continue }
 
     // fall back to bare year only if no range found yet for this entry
     const y = line.match(YEAR_ONLY_RE)
@@ -715,7 +768,7 @@ function parseExperienceOrEducation(text, type) {
   )
 }
 
-const ROLE_RE = /engineer|developer|manager|director|designer|analyst|scientist|lead|architect|consultant|intern|coordinator|specialist|officer|executive|president|secretary|mentee|fellow|\bvp\b|cto|ceo|cfo|founder|researcher|writer|editor|associate/i
+const ROLE_RE = /engineer|developer|manager|director|designer|analyst|scientist|lead|architect|consultant|intern|coordinator|specialist|officer|executive|president|secretary|mentee|fellow|promoter|operator|\bvp\b|cto|ceo|cfo|founder|researcher|writer|editor|associate/i
 const DEGREE_RE = /bachelor|master|doctor|\bphd\b|\bb\.?\s?s\.?\b|\bm\.?\s?s\.?\b|\bb\.?\s?a\.?\b|\bm\.?\s?a\.?\b|\bm\.?\s?b\.?\s?a\.?\b|associate|diploma|certificate|\bb\.?\s?eng\.?\b|\bm\.?\s?eng\.?\b|\bllb\b|\bjd\b/i
 
 function normalizeResumeLines(text) {
@@ -753,7 +806,9 @@ function getDateLineRemainder(line) {
     .replace(MONTH_YEAR_RE, '')
     .replace(YEAR_ONLY_RE, '')
     .replace(/\bExpected\b/i, '')
-    .replace(/[\s|\-–—·\/]+/g, ' ')
+    .replace(/[|•·\/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*[-–—]\s*|\s*[-–—]\s*$/g, '')
     .trim()
 }
 
@@ -792,7 +847,7 @@ function looksLikeHeaderLine(line) {
 
 function splitHeaderParts(line) {
   return cleanHeaderLine(line)
-    .split(/\s{2,}|\s+[|]\s+|\s+-\s+/)
+    .split(/\s{2,}|\s+[|]\s+|\s+[-–—?]\s+/)
     .map(part => part.trim())
     .filter(Boolean)
 }
@@ -802,6 +857,7 @@ function cleanHeaderLine(line) {
     .replace(/\s*,?\s*GPA\s*:?\s*\d+(?:\.\d+)?(?:\s*\/\s*\d+(?:\.\d+)?)?/i, '')
     .replace(/\s*,?\s*Minors?\s*:.*$/i, '')
     .replace(/\s*\|\s*$/g, '')
+    .replace(/\s*[-–—?]\s*$/g, '')
     .replace(/\s*,\s*$/g, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -936,6 +992,8 @@ function buildEducationEntry(headerCandidates, descLines, dateStr) {
     field = pipeParts[1]
   }
 
+  ;({ degree, field } = normalizeDegreeAndField(degree, field))
+
   return {
     id: createId(),
     school: school.slice(0, 150),
@@ -972,5 +1030,26 @@ function splitCombinedEducationLine(line) {
     field = pipeParts[1]
   }
 
+  ;({ degree, field } = normalizeDegreeAndField(degree, field))
+
   return school || degree ? { school, degree, field } : null
+}
+
+function normalizeDegreeAndField(degree, field = '') {
+  degree = cleanHeaderLine(degree || '')
+  field = cleanHeaderLine(field || '')
+
+  const dashParts = degree.split(/\s+[-–—]\s+/).map(part => part.trim()).filter(Boolean)
+  if (dashParts.length > 1) {
+    degree = dashParts[0]
+    field = field || dashParts.slice(1).join(' - ')
+  }
+
+  const degreeMatch = degree.match(/\b((?:Bachelor|Master|Associate|Doctor|Doctorate) of [A-Za-z ]+?)(?:\s+(?:in|of)\s+(.+))?$/i)
+  if (degreeMatch) {
+    degree = degreeMatch[1].trim()
+    if (!field && degreeMatch[2]) field = degreeMatch[2].trim()
+  }
+
+  return { degree, field }
 }

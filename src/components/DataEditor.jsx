@@ -9,6 +9,8 @@ export default function DataEditor({ initialData, onBack, onNext }) {
     customSections: (initialData.customSections || []).map(normalizeCustomSection),
   }))
   const [skillInput, setSkillInput] = useState('')
+  const [editingSkillIdx, setEditingSkillIdx] = useState(null)
+  const [editingSkillValue, setEditingSkillValue] = useState('')
   const [error, setError] = useState(null)
 
   function set(field, value) {
@@ -25,6 +27,28 @@ export default function DataEditor({ initialData, onBack, onNext }) {
 
   function removeSkill(idx) {
     set('skills', data.skills.filter((_, i) => i !== idx))
+    if (editingSkillIdx === idx) cancelSkillEdit()
+  }
+
+  function startSkillEdit(idx) {
+    setEditingSkillIdx(idx)
+    setEditingSkillValue(data.skills[idx] || '')
+  }
+
+  function saveSkillEdit() {
+    if (editingSkillIdx === null) return
+    const nextValue = editingSkillValue.trim()
+    const updated = data.skills
+      .map((skill, i) => i === editingSkillIdx ? nextValue : skill)
+      .filter(Boolean)
+      .filter((skill, i, arr) => arr.findIndex(v => v.toLowerCase() === skill.toLowerCase()) === i)
+    set('skills', updated)
+    cancelSkillEdit()
+  }
+
+  function cancelSkillEdit() {
+    setEditingSkillIdx(null)
+    setEditingSkillValue('')
   }
 
   function updateExp(idx, field, value) {
@@ -169,13 +193,36 @@ export default function DataEditor({ initialData, onBack, onNext }) {
         <Section title="Skills">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
             {data.skills.map((skill, i) => (
-              <span key={i} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: 'var(--bg-3)', border: '1px solid var(--border-light)',
-                borderRadius: 20, padding: '4px 12px',
-                fontSize: 13, color: 'var(--text-2)',
-              }}>
-                {skill}
+              <span key={i} className={`skill-edit-chip ${editingSkillIdx === i ? 'editing' : ''}`}>
+                {editingSkillIdx === i ? (
+                  <input
+                    value={editingSkillValue}
+                    onChange={e => setEditingSkillValue(e.target.value)}
+                    onBlur={saveSkillEdit}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveSkillEdit()
+                      if (e.key === 'Escape') cancelSkillEdit()
+                    }}
+                    autoFocus
+                    style={{
+                      width: Math.max(140, Math.min(360, editingSkillValue.length * 8 + 28)),
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text)',
+                      font: 'inherit',
+                      outline: 'none',
+                      padding: 0,
+                    }}
+                  />
+                ) : (
+                  <button
+                    onClick={() => startSkillEdit(i)}
+                    style={{ background: 'none', border: 'none', cursor: 'text', color: 'inherit', font: 'inherit', padding: 0, textAlign: 'left' }}
+                    aria-label={`Edit ${skill}`}
+                  >
+                    {skill}
+                  </button>
+                )}
                 <button
                   onClick={() => removeSkill(i)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', lineHeight: 1, padding: 0, fontSize: 14 }}

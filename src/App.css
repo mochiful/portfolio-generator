@@ -311,6 +311,49 @@ html, body {
   margin-bottom: 12px;
 }
 
+.skill-edit-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--text-2);
+  transition: color var(--transition), background var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+
+.skill-edit-chip::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  border: 1px solid transparent;
+  opacity: 0;
+  transform: scaleX(0.92);
+  transition: opacity var(--transition), transform var(--transition), border-color var(--transition);
+}
+
+.skill-edit-chip:hover,
+.skill-edit-chip:focus-within,
+.skill-edit-chip.editing {
+  color: var(--text);
+  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--amber-glow);
+  transform: translateY(-1px);
+}
+
+.skill-edit-chip:hover::after,
+.skill-edit-chip:focus-within::after,
+.skill-edit-chip.editing::after {
+  border-color: var(--amber);
+  opacity: 1;
+  transform: scaleX(1);
+}
+
 .layout-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
